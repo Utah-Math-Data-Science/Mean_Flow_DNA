@@ -3,6 +3,7 @@ from flow import expand_simplex, sample_conditional_path
 import torch 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+from collections import defaultdict
 
 class DNAModule(pl.LightningModule):
     def __init__(self, args, alphabet_size, num_cls, toy_data):
@@ -14,6 +15,7 @@ class DNAModule(pl.LightningModule):
         self.toy_data = toy_data
         self.load_model()
         self.automatic_optimization = True
+        self.val_outputs = defaultdict(list)
 
     def step(self, batch):
         seq, cls = batch
@@ -33,27 +35,64 @@ class DNAModule(pl.LightningModule):
         def model_fn(xt, t, r):
             return self.model(xt, t, r)
         
-        # 4. Compute Jacobian-vector product
         primal = (xt, t, r)
         tangent = (torch.zeros_like(xt), torch.ones_like(t), torch.zeros_like(r))
         u, du_dt = torch.func.jvp(model_fn, primal, tangent)
         
-        # 5. Mean flow target
         u_target = v + (t - r)[:,None,None] * du_dt.detach()
-                # Validation-specific computations
+
+        #huber seems to give better results? 
+        loss = torch.nn.functional.huber_loss(u, u_target) 
+
+        # if self.stage == "val":
+        #     logits = self.mean_flow_inference(seq)
+        #     predicted_sequence = torch.argmax(logits, dim=-1)
+        #     self.val_outputs['seqs'].append(predicted_sequence.cpu())
+        #     all_seqs = torch.cat(self.val_outputs['seqs'], dim=0).cpu()
+        #     all_seqs_one_hot = torch.nn.functional.one_hot(all_seqs, num_classes=self.args.toy_simplex_dim)
+        #     counts = all_seqs_one_hot.sum(0).float()
+        #     empirical_dist = counts / counts.sum(dim=-1, keepdim=True)
+        #     kl = (empirical_dist * (torch.log(empirical_dist) - torch.log(self.toy_data.probs[0]))).sum(-1).mean()
+        #     rkl = (self.toy_data.probs[0] * (torch.log(self.toy_data.probs[0]) - torch.log(empirical_dist))).sum(-1).mean()
+        #     sanity_self_kl = (empirical_dist * (torch.log(empirical_dist) - torch.log(empirical_dist))).sum(-1).mean()
+        #     mean_log.update({'val_kl': kl.cpu().item(), 'val_rkl': rkl.cpu().item(), 'val_sanity_self_kl': sanity_self_kl.cpu().item()})
+
+        #     self.check_metrics(predicted_sequence, seq)
         if self.stage == "val":
-            pred_seq = self.mean_flow_inference(seq)
-            accuracy = pred_seq.argmax(-1).eq(seq).float().mean()
-            self.log("val_accuracy", accuracy)
+            logits = self.mean_flow_inference(seq)
+            predicted_sequence = torch.argmax(logits, dim=-1)
             
+            # Store predictions for later analysis (optional)
+            self.val_outputs['seqs'].append(predicted_sequence.cpu())
+            
+            # Compute KL divergence for THIS BATCH only
+            batch_one_hot = torch.nn.functional.one_hot(predicted_sequence, num_classes=self.args.toy_simplex_dim)
+            batch_empirical_dist = batch_one_hot.float().mean(dim=0)  # Average over batch
+            
+            # Ensure no zeros for numerical stability
+            eps = 1e-10
+            batch_empirical_dist = batch_empirical_dist.clamp(min=eps)
+            true_probs = self.toy_data.probs[0].clamp(min=eps).to(batch_empirical_dist.device)
+            
+            # KL(true || model) and KL(model || true)
+            kl = (batch_empirical_dist * (torch.log(batch_empirical_dist) - torch.log(true_probs))).sum()
+            rkl = (true_probs * (torch.log(true_probs) - torch.log(batch_empirical_dist))).sum()
+            sanity_self_kl = (batch_empirical_dist * (torch.log(batch_empirical_dist) - torch.log(batch_empirical_dist))).sum(-1).mean()
+
+            # Log batch-level metrics
+            self.log("self_rkl", sanity_self_kl, on_step=True, on_epoch=True, prog_bar=True)
+            self.log("val_kl", kl, on_step=True, on_epoch=True, prog_bar=True)
+            self.log("val_rkl", rkl, on_step=True, on_epoch=True)
+
             if self.args.cls_ckpt is not None:
                 self.run_cls_model(pred_seq, cls, clean_data=False, postfix='_generated')
         
-        return torch.nn.functional.mse_loss(u, u_target)
+        return loss
 
     def training_step(self, batch, batch_idx):
         self.stage = 'train'
         loss = self.step(batch)
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
@@ -64,37 +103,33 @@ class DNAModule(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-5)
+        return torch.optim.Adam(self.parameters(), lr=5e-4)
+
 
 
     def mean_flow_inference(self, seq):
         B, L = seq.shape
         K = self.model.alphabet_size
         
-        # Initialize from uniform Dirichlet distribution
         zt = torch.distributions.Dirichlet(torch.ones(B, L, K)).sample().to(self.device)
-        
-        # Time steps (reverse flow: t=1 → t=0)
         t_span = torch.linspace(0, 1, self.args.num_integration_steps, device=self.device)
         
-        for t, r in zip(t_span[:-1], t_span[1:]):  # t > r
-            # Prepare inputs with correct dimensions
-            t_batch = t.expand(B)  # Shape [B]
-            r_batch = r.expand(B)  # Shape [B]
+        for n in range(self.args.num_integration_steps - 1):
+            r = t_span[n]      # current time
+            t = t_span[n+1]    # next time
             
-            zt_inp, _ = expand_simplex(zt, t_batch, self.args.prior_pseudocount)
- 
+            # Use state at current time r, not next time t
+            zt_inp, _ = expand_simplex(zt, r.expand(B), self.args.prior_pseudocount)
+            u = self.model(zt_inp, r.expand(B), t.expand(B))
             
-            # Compute the flow field
-            u = self.model(zt_inp, t_batch, r_batch)
-            
-            # Mean flow update equation
-            zr = zt - (t - r) * u
-            
-            # Project back to simplex
-            zt = torch.softmax(zr, dim=-1)
-            
+            dt = t - r
+            zt = zt + dt * u
+        
         return zt
+
+
+
+
 
 
     def load_model(self):
@@ -103,3 +138,6 @@ class DNAModule(pl.LightningModule):
     def load_classifiers(self, load_cls, load_clean_cls, requires_grad = False):
                 self.cls_model = MLPModel(hparams['args'], alphabet_size=self.model.alphabet_size, num_cls=self.model.num_cls, classifier=True)
 
+    def check_accuracy(self, seq_pred, original_seq):
+
+        print(f'accuracy: {seq_pred.eq(original_seq).float().mean()}')

@@ -7,7 +7,7 @@ os.environ["MODEL_DIR"] = "./saved_models"
 
 " Toy Dataset Taken From Original Dirichelet Flow Matching for DNA Paper"
 class ToyDataset(torch.utils.data.IterableDataset):
-    def __init__(self, args, max_samples = 2000):
+    def __init__(self, args, max_samples = 1000):
         super().__init__()
         self.num_cls = args.toy_num_cls
         self.seq_len = args.toy_seq_len
