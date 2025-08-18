@@ -7,7 +7,7 @@ os.environ["MODEL_DIR"] = "./saved_models"
 
 " Toy Dataset Taken From Original Dirichelet Flow Matching for DNA Paper"
 class ToyDataset(torch.utils.data.IterableDataset):
-    def __init__(self, args, max_samples = 1000):
+    def __init__(self, args, max_samples = 512000):
         super().__init__()
         self.num_cls = args.toy_num_cls
         self.seq_len = args.toy_seq_len
@@ -45,3 +45,49 @@ class ToyDataset(torch.utils.data.IterableDataset):
                 ))
             yield torch.stack(seq).squeeze(-1), torch.tensor(cls)
             count += 1
+
+
+
+
+
+class EnhancerDataset(torch.utils.data.Dataset):
+    def __init__(self, args, split='train'):
+        all_data = pickle.load(open(f'data/the_code/General/data/Deep{"MEL2" if args.mel_enhancer else "FlyBrain"}_data.pkl', 'rb'))
+        self.seqs = torch.argmax(torch.from_numpy(copy.deepcopy(all_data[f'{split}_data'])), dim=-1)
+        self.clss = torch.argmax(torch.from_numpy(copy.deepcopy(all_data[f'y_{split}'])), dim=-1)
+        self.num_cls = all_data[f'y_{split}'].shape[-1]
+        self.alphabet_size = 4
+
+    def __len__(self):
+        return len(self.seqs)
+
+    def __getitem__(self, idx):
+        return self.seqs[idx], self.clss[idx]
+
+
+class TwoClassOverfitDataset(torch.utils.data.IterableDataset):
+    def __init__(self, args):
+        super().__init__()
+        self.seq_len = args.toy_seq_len
+        self.alphabet_size = args.toy_simplex_dim
+        self.num_cls = 2
+
+        if args.cls_ckpt is not None:
+            distribution_dict = torch.load(os.path.join(os.path.dirname(args.cls_ckpt), 'overfit_dataset.pt'))
+            self.data_class1 = distribution_dict['data_class1']
+            self.data_class2 = distribution_dict['data_class2']
+        else:
+            self.data_class1 = torch.stack([torch.from_numpy(np.random.choice(np.arange(self.alphabet_size), size=args.toy_seq_len, replace=True)) for _ in range(args.toy_num_seq)])
+            self.data_class2 = torch.stack([torch.from_numpy(np.random.choice(np.arange(self.alphabet_size), size=args.toy_seq_len, replace=True)) for _ in range(args.toy_num_seq)])
+            distribution_dict = {'data_class1': self.data_class1, 'data_class2': self.data_class2}
+        torch.save(distribution_dict, os.path.join(os.environ["MODEL_DIR"], 'overfit_dataset.pt'))
+
+    def __len__(self):
+        return 10000000000
+
+    def __iter__(self):
+        while True:
+            if np.random.rand() < 0.5:
+                yield self.data_class1[np.random.choice(np.arange(len(self.data_class1)))], torch.tensor([0])
+            else:
+                yield self.data_class2[np.random.choice(np.arange(len(self.data_class2)))], torch.tensor([1])

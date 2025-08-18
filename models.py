@@ -40,8 +40,6 @@ class MLPModel(nn.Module):
                 nn.Linear(args.hidden_dim, num_cls)
             )
         
-        if getattr(args, 'cls_free_guidance', False) and not classifier:
-            self.cls_embedder = nn.Embedding(num_cls + 1, args.hidden_dim)
 
     def forward(self, x, t, r, cls=None):
         """
@@ -58,11 +56,7 @@ class MLPModel(nn.Module):
         feat = self.embedder(x)  # [batch, seq_len, hidden_dim]
         
         feat = feat + t_embed.unsqueeze(1) + r_embed.unsqueeze(1)  # [batch, seq_len, hidden_dim]
-        
-        if getattr(self.args, 'cls_free_guidance', False) and not self.classifier and cls is not None:
-            cls_embed = self.cls_embedder(cls)  # [batch, hidden_dim]
-            feat = feat + cls_embed.unsqueeze(1)  # [batch, seq_len, hidden_dim]
-        
+
         # Prepare MLP input with full context
         mlp_input = torch.cat([
             feat,
@@ -72,9 +66,7 @@ class MLPModel(nn.Module):
         
         # Process through MLP
         output = self.mlp(mlp_input)  # [batch, seq_len, output_dim]
-        
-        if self.classifier:
-            return self.cls_head(output.mean(dim=1))  # [batch, num_cls]
+
         return output  # [batch, seq_len, alphabet_size]
 
 class GaussianFourierProjection(nn.Module):

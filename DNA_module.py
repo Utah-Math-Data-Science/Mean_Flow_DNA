@@ -44,28 +44,13 @@ class DNAModule(pl.LightningModule):
         #huber seems to give better results? 
         loss = torch.nn.functional.huber_loss(u, u_target) 
 
-        # if self.stage == "val":
-        #     logits = self.mean_flow_inference(seq)
-        #     predicted_sequence = torch.argmax(logits, dim=-1)
-        #     self.val_outputs['seqs'].append(predicted_sequence.cpu())
-        #     all_seqs = torch.cat(self.val_outputs['seqs'], dim=0).cpu()
-        #     all_seqs_one_hot = torch.nn.functional.one_hot(all_seqs, num_classes=self.args.toy_simplex_dim)
-        #     counts = all_seqs_one_hot.sum(0).float()
-        #     empirical_dist = counts / counts.sum(dim=-1, keepdim=True)
-        #     kl = (empirical_dist * (torch.log(empirical_dist) - torch.log(self.toy_data.probs[0]))).sum(-1).mean()
-        #     rkl = (self.toy_data.probs[0] * (torch.log(self.toy_data.probs[0]) - torch.log(empirical_dist))).sum(-1).mean()
-        #     sanity_self_kl = (empirical_dist * (torch.log(empirical_dist) - torch.log(empirical_dist))).sum(-1).mean()
-        #     mean_log.update({'val_kl': kl.cpu().item(), 'val_rkl': rkl.cpu().item(), 'val_sanity_self_kl': sanity_self_kl.cpu().item()})
-
-        #     self.check_metrics(predicted_sequence, seq)
         if self.stage == "val":
             logits = self.mean_flow_inference(seq)
             predicted_sequence = torch.argmax(logits, dim=-1)
             
-            # Store predictions for later analysis (optional)
             self.val_outputs['seqs'].append(predicted_sequence.cpu())
             
-            # Compute KL divergence for THIS BATCH only
+            # Compute KL divergence for THIS BATCH
             batch_one_hot = torch.nn.functional.one_hot(predicted_sequence, num_classes=self.args.toy_simplex_dim)
             batch_empirical_dist = batch_one_hot.float().mean(dim=0)  # Average over batch
             
@@ -85,7 +70,7 @@ class DNAModule(pl.LightningModule):
             self.log("val_rkl", rkl, on_step=True, on_epoch=True)
 
             if self.args.cls_ckpt is not None:
-                self.run_cls_model(pred_seq, cls, clean_data=False, postfix='_generated')
+                self.run_cls_model(predicted_sequence, cls, clean_data=False, postfix='_generated')
         
         return loss
 
@@ -115,10 +100,9 @@ class DNAModule(pl.LightningModule):
         t_span = torch.linspace(0, 1, self.args.num_integration_steps, device=self.device)
         
         for n in range(self.args.num_integration_steps - 1):
-            r = t_span[n]      # current time
-            t = t_span[n+1]    # next time
+            r = t_span[n]      
+            t = t_span[n+1]    
             
-            # Use state at current time r, not next time t
             zt_inp, _ = expand_simplex(zt, r.expand(B), self.args.prior_pseudocount)
             u = self.model(zt_inp, r.expand(B), t.expand(B))
             
@@ -128,16 +112,8 @@ class DNAModule(pl.LightningModule):
         return zt
 
 
-
-
-
-
-    def load_model(self):
+    def load_model(self, checkpoint=None):
         self.model = MLPModel(self.args, self.alphabet_size, self.num_cls, classifier = False)
-    
-    def load_classifiers(self, load_cls, load_clean_cls, requires_grad = False):
-                self.cls_model = MLPModel(hparams['args'], alphabet_size=self.model.alphabet_size, num_cls=self.model.num_cls, classifier=True)
 
     def check_accuracy(self, seq_pred, original_seq):
-
         print(f'accuracy: {seq_pred.eq(original_seq).float().mean()}')
