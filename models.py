@@ -1,26 +1,37 @@
 import torch.nn as nn
 import torch
 
+# import copy
 
 
 class MLPModel(nn.Module):
-    def __init__(self, args, alphabet_size, num_cls, classifier=False):
+    def __init__(self, args, alphabet_size):
+        """
+        A simplified MLP model that always outputs a 'related simplex' (logits).
+        Designed to be used as density model p(v) in frameworks like Argmax Flows.
+
+        Args:
+            args: Configuration object containing model hyperparameters (e.g., hidden_dim).
+            alphabet_size (int): The number of categories/categories per sequence position.
+        """
         super().__init__()
         self.alphabet_size = alphabet_size
-        self.num_cls = num_cls
-        self.classifier = classifier
         self.args = args
 
+        # Projection for time embeddings
         self.time_embedder = nn.Sequential(
             GaussianFourierProjection(embed_dim=args.hidden_dim),
             nn.Linear(args.hidden_dim, args.hidden_dim),
-            nn.ReLU()  
+            nn.ReLU()
         )
-        
-        # Input embedding handles expanded simplex if needed
-        self.input_expansion = 1 if classifier and not args.cls_expanded_simplex else 2
+
+        # Projection for the input sequence.
+
+        self.input_expansion = 2
         self.embedder = nn.Linear(self.input_expansion * alphabet_size, args.hidden_dim)
-        
+
+        # The core MLP. Input is [hidden_dim (from sequence) + hidden_dim (t) + hidden_dim (r)]
+        # Output is logits for each position (alphabet_size)
         self.mlp = nn.Sequential(
             nn.Linear(args.hidden_dim + 2 * args.hidden_dim, args.hidden_dim),
             nn.LayerNorm(args.hidden_dim),  # Add this
@@ -30,16 +41,9 @@ class MLPModel(nn.Module):
             nn.LayerNorm(args.hidden_dim),  # Add this
             nn.Dropout(0.1),  
             nn.ReLU(),
-            nn.Linear(args.hidden_dim, args.hidden_dim if classifier else alphabet_size)
+            nn.Linear(args.hidden_dim, alphabet_size)
         )
-        
-        if classifier:
-            self.cls_head = nn.Sequential(
-                nn.Linear(args.hidden_dim, args.hidden_dim),
-                nn.ReLU(),
-                nn.Linear(args.hidden_dim, num_cls)
-            )
-        
+
 
     def forward(self, x, t, r, cls=None):
         """
@@ -52,7 +56,7 @@ class MLPModel(nn.Module):
         # Time embeddings for both t and r
         t_embed = self.time_embedder(t)  # [batch, hidden_dim]
         r_embed = self.time_embedder(r)  # [batch, hidden_dim]
-        
+
         feat = self.embedder(x)  # [batch, seq_len, hidden_dim]
         
         feat = feat + t_embed.unsqueeze(1) + r_embed.unsqueeze(1)  # [batch, seq_len, hidden_dim]
@@ -66,14 +70,13 @@ class MLPModel(nn.Module):
         
         # Process through MLP
         output = self.mlp(mlp_input)  # [batch, seq_len, output_dim]
-
         return output  # [batch, seq_len, alphabet_size]
+
 
 class GaussianFourierProjection(nn.Module):
     """
     Gaussian random features for encoding time steps.
     """
-
     def __init__(self, embed_dim, scale=30.):
         super().__init__()
         # Randomly sample weights during initialization. These weights are fixed
@@ -83,3 +86,4 @@ class GaussianFourierProjection(nn.Module):
     def forward(self, x):
         x_proj = x[:, None] * self.W[None, :] * 2 * torch.pi
         return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+    

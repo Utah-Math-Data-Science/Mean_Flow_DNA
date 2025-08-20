@@ -4,7 +4,7 @@ from torch.serialization import safe_globals
 from models import MLPModel
 import torch 
 from argparse import Namespace
-from toy_data import ToyDataset
+from datasets import ToyDataset
 # not using argparse for now
 args = Namespace(
     toy_num_cls=1,

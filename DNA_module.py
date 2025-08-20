@@ -27,11 +27,10 @@ class DNAModule(pl.LightningModule):
         #project the interpolated sample onto the simplex 
         xt, prior_weights = expand_simplex(xt,t, self.args.prior_pseudocount)
 
-
-        # 2. Compute velocity field
+        # Compute velocity field
         v = x1 - x0
         
-        # 3. Define JVP function
+        # 3. Wrap model for jvp 
         def model_fn(xt, t, r):
             return self.model(xt, t, r)
         
@@ -39,10 +38,10 @@ class DNAModule(pl.LightningModule):
         tangent = (torch.zeros_like(xt), torch.ones_like(t), torch.zeros_like(r))
         u, du_dt = torch.func.jvp(model_fn, primal, tangent)
         
+        
         u_target = v + (t - r)[:,None,None] * du_dt.detach()
 
-        #huber seems to give better results? 
-        loss = torch.nn.functional.huber_loss(u, u_target) 
+        loss = torch.nn.functional.mse_loss(u, u_target) 
 
         if self.stage == "val":
             logits = self.mean_flow_inference(seq)
@@ -96,6 +95,7 @@ class DNAModule(pl.LightningModule):
         B, L = seq.shape
         K = self.model.alphabet_size
         
+        #sample random Dirichlet noise 
         zt = torch.distributions.Dirichlet(torch.ones(B, L, K)).sample().to(self.device)
         t_span = torch.linspace(0, 1, self.args.num_integration_steps, device=self.device)
         
@@ -113,7 +113,5 @@ class DNAModule(pl.LightningModule):
 
 
     def load_model(self, checkpoint=None):
-        self.model = MLPModel(self.args, self.alphabet_size, self.num_cls, classifier = False)
+        self.model = MLPModel(self.args, self.alphabet_size)
 
-    def check_accuracy(self, seq_pred, original_seq):
-        print(f'accuracy: {seq_pred.eq(original_seq).float().mean()}')

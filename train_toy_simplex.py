@@ -1,4 +1,4 @@
-from toy_data import ToyDataset
+from datasets import ToyDataset
 from DNA_module import DNAModule 
 
 from argparse import Namespace
@@ -10,23 +10,25 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 Device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-# not using argparse for now
+# Arguments for model 
 args = Namespace(
     toy_num_cls=1,
-    toy_seq_len=4,
-    toy_simplex_dim=40, 
+    toy_seq_len=4, 
+    toy_simplex_dim=40, # alphabet size / K from Dirichlet Flows paper 
     hidden_dim = 512,
     cls_ckpt=None,
     ckpt_iterations = None,
     batch_size = 32 ,    
     num_workers = 4  , 
-    prior_pseudocount = 2,    
+    prior_pseudocount = 2,    #leave as 2 
     shuffle = False,        
     max_epochs = 5000, 
     expand_simplex = True,
     num_integration_steps = 10, 
     limit_val_batches=1000,
-    limit_train_batches = 1000
+    limit_train_batches = 1000,
+    num_cnn_stacks = 5, #for CNN (ignore for now)
+    dropout = 0.1
 )
 
 
@@ -52,13 +54,14 @@ trainer = pl.Trainer(
 os.makedirs("./saved_models", exist_ok=True)
 
 train_ds = ToyDataset(args)
-val_ds = ToyDataset(args)  # Create fresh instance if possible
+val_ds = ToyDataset(args)  # separate data instance (new data generated )
 
 toy_data = train_ds        
 train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=args.shuffle, pin_memory=True)
 val_loader = torch.utils.data.DataLoader(val_ds, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory = True)
 
 model = DNAModule(args, train_ds.alphabet_size, train_ds.num_cls, toy_data)
+
 model.to(Device)
 trainer.fit(model, train_loader, val_loader)
 
