@@ -1,0 +1,73 @@
+alphabet_size: 40
+args: !!python/object:argparse.Namespace
+  batch_size: 32
+  ckpt_iterations: null
+  cls_ckpt: null
+  dropout: 0.1
+  expand_simplex: true
+  flow_type: dirichlet
+  hidden_dim: 512
+  limit_train_batches: 1000
+  limit_val_batches: 1000
+  max_epochs: 5000
+  num_cnn_stacks: 5
+  num_integration_steps: 10
+  num_workers: 4
+  prior_pseudocount: 2
+  shuffle: false
+  toy_num_cls: 1
+  toy_seq_len: 4
+  toy_simplex_dim: 40
+num_cls: 1
+toy_data: !!python/object:datasets.ToyDataset
+  alphabet_size: 40
+  class_probs: !!python/object/apply:torch._utils._rebuild_tensor_v2
+  - !!python/object/apply:torch.storage._load_from_bytes
+    - !!binary |
+      gAKKCmz8nEb5IGqoUBkugAJN6QMugAJ9cQAoWBAAAABwcm90b2NvbF92ZXJzaW9ucQFN6QNYDQAA
+      AGxpdHRsZV9lbmRpYW5xAohYCgAAAHR5cGVfc2l6ZXNxA31xBChYBQAAAHNob3J0cQVLAlgDAAAA
+      aW50cQZLBFgEAAAAbG9uZ3EHSwR1dS6AAihYBwAAAHN0b3JhZ2VxAGN0b3JjaApGbG9hdFN0b3Jh
+      Z2UKcQFYCQAAADMwNjIwNjkyOHECWAMAAABjcHVxA0sBTnRxBFEugAJdcQBYCQAAADMwNjIwNjky
+      OHEBYS4BAAAAAAAAAAAAgD8=
+  - 0
+  - !!python/tuple
+    - 1
+  - !!python/tuple
+    - 1
+  - false
+  - !!python/object/apply:collections.OrderedDict
+    - []
+  max_samples: 512000
+  num_cls: 1
+  probs: !!python/object/apply:torch._utils._rebuild_tensor_v2
+  - !!python/object/apply:torch.storage._load_from_bytes
+    - !!binary |
+      gAKKCmz8nEb5IGqoUBkugAJN6QMugAJ9cQAoWBAAAABwcm90b2NvbF92ZXJzaW9ucQFN6QNYDQAA
+      AGxpdHRsZV9lbmRpYW5xAohYCgAAAHR5cGVfc2l6ZXNxA31xBChYBQAAAHNob3J0cQVLAlgDAAAA
+      aW50cQZLBFgEAAAAbG9uZ3EHSwR1dS6AAihYBwAAAHN0b3JhZ2VxAGN0b3JjaApGbG9hdFN0b3Jh
+      Z2UKcQFYCQAAADI3ODA4NDgzMnECWAMAAABjcHVxA0ugTnRxBFEugAJdcQBYCQAAADI3ODA4NDgz
+      MnEBYS6gAAAAAAAAAD/RxjxhK6Q8MZeKPGXbHz2waoM8C/3EPCZ5Dj1gJrs80y2rPJwvBD32DxI9
+      hIrZPN5DiDxmO8w8RqTMPNelHD23b608yAu2PIlziTwo6x49CQYQPdQhlzzoWaU8wVODPMfZpDzL
+      MY08Fl3LPHVVJz1mx4M8vfuTPLGxpTyC+aE8qKCcPEbZIT2NGBY9A50APV37zTyHUfg8GweOPDRZ
+      hjw76t88560GPde50TwqGXU8Xa8GPW7LdTwydNk8v1oBPerAyzw6lBU9Vs+sPHOOwTwIVc4889Hd
+      POIZ6Ty5YPo844/GPJwdajzDw6M82vj6PKLYCz2XcLQ8nsT9PJYJxjyJ/dY8d1QQPcS16zwBp7E8
+      1wfCPKogrDx68Js8lVPtPIkekzy8lQY9Q0qCPOy2pzzHu/Q8nF9vPDWwfDymUsE8pFUaPfCY+jxk
+      aAo9bRcAPY37/Dzv1ZU8hFYcPdysgTxcQxE9GifdPBzmwDxMPrc8VvCPPMc7Aj2ifLo8R+luPCuk
+      6TwX8L0898eOPG2zgjy4KNQ8NhRwPLGqizxJgqY8ppS1PIzHhDwG4tc8q/h4PEOvbTzXw608mIV6
+      PCWTFj3hWho94PIFPfZtGj1IfLM83Y/dPKPw7zyCe+s8Hke5PJx4fTyKeAk9nBYRPZRFsjydQwY9
+      YYiDPDFw/TwdbdI8t1lyPGWPfDwcC8Y8h3WzPI21Az1JWRI9ceTbPFqA1zx0awM9Hox4PDWbyTzv
+      3JU8UycHPbQ9wzwnPpQ8bA8DPdY7jzwe+xU9VaLgPGlkBz2ISIE8WZ/KPAZtoDwBBh09vQGtPKyf
+      hjznQdI8dDedPFSbjjzCyuQ8jpcVPdhOiDw=
+  - 0
+  - !!python/tuple
+    - 1
+    - 4
+    - 40
+  - !!python/tuple
+    - 160
+    - 40
+    - 1
+  - false
+  - !!python/object/apply:collections.OrderedDict
+    - []
+  seq_len: 4

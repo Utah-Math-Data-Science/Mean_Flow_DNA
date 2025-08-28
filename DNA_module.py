@@ -4,6 +4,7 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from collections import defaultdict
+from dequantizer import Dequantizer
 
 class DNAModule(pl.LightningModule):
     def __init__(self, args, alphabet_size, num_cls, toy_data):
@@ -16,17 +17,25 @@ class DNAModule(pl.LightningModule):
         self.load_model()
         self.automatic_optimization = True
         self.val_outputs = defaultdict(list)
+        if args.flow_type == 'argmax':
+            self.dequantizer = Dequantizer(K=args.toy_simplex_dim)
 
     def step(self, batch):
         seq, cls = batch
         B = seq.size(0)
         
         # 1. Sample conditional path
-        x0, xt, x1, t, r = sample_conditional_path(self.args, seq, self.alphabet_size, self.device)
+        x0, xt, x1, t, r = sample_conditional_path(self.args, 
+                                                   seq, 
+                                                   self.alphabet_size, 
+                                                   self.device, 
+                                                   dequantizer=self.dequantizer if self.args.flow_type == 'argmax' else None)
         
         #project the interpolated sample onto the simplex 
-        xt, prior_weights = expand_simplex(xt,t, self.args.prior_pseudocount)
-
+        if self.args.flow_type == 'dirichlet':
+            xt, prior_weights = expand_simplex(xt,t, self.args.prior_pseudocount)
+        else:
+            xt = torch.cat([xt, torch.zeros_like(xt)], dim=-1)
         # Compute velocity field
         v = x1 - x0
         
